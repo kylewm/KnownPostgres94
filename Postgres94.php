@@ -59,15 +59,21 @@ class Postgres94 extends \Idno\Data\AbstractSQL {
             }
 
             if ($exists) {
-                $stmt = $this->client->prepare("update $collection set uuid=:uuid, jdoc=:jdoc where _id=:id");
+                $stmt = $this->client->prepare("update $collection set uuid=:uuid, jdoc=:jdoc, search=to_tsvector(:search) where _id=:id");
             } else {
-                $stmt = $this->client->prepare("insert into $collection (_id, uuid, jdoc) values (:id, :uuid, :jdoc)");
+                $stmt = $this->client->prepare("insert into $collection (_id, uuid, jdoc, search) values (:id, :uuid, :jdoc, to_tsvector(:search))");
             }
+
+            $search = implode(' ', array_filter([
+                $array['title'], $array['tags'],
+                $array['body'], $array['description'],
+            ]));
 
             $result = $stmt->execute([
                 'uuid' => $array['uuid'],
                 'id' => $array['_id'],
                 'jdoc' => $jdoc,
+                'search' => $search,
             ]);
 
             $this->client->commit();
@@ -178,7 +184,11 @@ class Postgres94 extends \Idno\Data\AbstractSQL {
     {
         $subwhere = [];
         foreach ((array) $parameters as $key => $value) {
-            if ($key === '$or') {
+            if ($key === '$search' && !empty($value)) {
+                $subwhere[] = "search @@ to_tsquery(:v{$counter})";
+                $variables["v{$counter}"] = $value[0];
+                $counter++;
+            } else if ($key === '$or') {
                 $subwhere[] = '(' . $this->build_where_from_array($value, $variables, $counter, $keyPrefix, 'or') . ')';
             } else {
                 if (!is_array($value)) {

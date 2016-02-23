@@ -2,16 +2,25 @@
 -- Base Known schema
 --
 
+drop table config;
+drop table entities;
+drop table reader;
+drop table versions;
+drop table session;
+drop function if exists entities_populate_search();
+
 --
 -- Table structure for table config
 --
 
-CREATE TABLE IF NOT EXISTS config (
-  _id varchar(32) NOT NULL PRIMARY KEY,
-  uuid varchar(255) NOT NULL UNIQUE,
-  jdoc jsonb
+create table if not exists config (
+  _id varchar(32) not null primary key,
+  uuid varchar(255) not null unique,
+  jdoc jsonb,
+  search tsvector
 );
-CREATE INDEX ON config (uuid);
+create index on config (uuid);
+create index on config using gin(search);
 
 -- --------------------------------------------------------
 
@@ -19,22 +28,33 @@ CREATE INDEX ON config (uuid);
 -- Table structure for table entities
 --
 
-CREATE TABLE IF NOT EXISTS entities (
-  _id varchar(32) NOT NULL PRIMARY KEY,
-  uuid varchar(255) NOT NULL UNIQUE,
-  jdoc jsonb
+create table if not exists entities (
+  _id varchar(32) not null primary key,
+  uuid varchar(255) not null unique,
+  jdoc jsonb,
+  search tsvector
 );
 
-CREATE INDEX ON entities (uuid);
-CREATE INDEX ON entities USING GIN (( jdoc -> 'entity_subtype' ));
-CREATE INDEX ON entities USING GIN (( jdoc -> 'created' ));
-CREATE INDEX ON entities USING GIN (( jdoc -> 'owner' ));
-CREATE INDEX ON entities USING GIN (( jdoc -> 'object' ));
+create index on entities (uuid);
+create index on entities using gin(( jdoc -> 'entity_subtype' ));
+create index on entities using gin(( jdoc -> 'created' ));
+create index on entities using gin(( jdoc -> 'owner' ));
+create index on entities using gin(( jdoc -> 'object' ));
+create index on entities using gin(search);
 
+-- CREATE FUNCTION entities_populate_search() RETURNS trigger AS $$
+-- begin
+--   new.search :=
+--     setweight(to_tsvector('pg_catalog.english', coalesce(new.jdoc->>'title','')), 'A') ||
+--     setweight(to_tsvector('pg_catalog.english', coalesce(new.jdoc->>'tags','')), 'A') ||
+--     setweight(to_tsvector('pg_catalog.english', coalesce(new.jdoc->>'description','')), 'B') ||
+--     setweight(to_tsvector('pg_catalog.english', coalesce(new.jdoc->>'body','')), 'B');
+--   return new;
+-- end
+-- $$ LANGUAGE plpgsql;
 
--- FULL TEXT ?
-
-
+-- CREATE TRIGGER entities_search_trigger BEFORE INSERT OR UPDATE
+--     ON entities FOR EACH ROW EXECUTE PROCEDURE entities_populate_search();
 
 -- --------------------------------------------------------
 
@@ -42,13 +62,15 @@ CREATE INDEX ON entities USING GIN (( jdoc -> 'object' ));
 -- Table structure for table reader
 --
 
-CREATE TABLE IF NOT EXISTS reader (
-  _id varchar(32) NOT NULL PRIMARY KEY,
-  uuid varchar(255) NOT NULL UNIQUE,
-  jdoc jsonb
+create table if not exists reader (
+  _id varchar(32) not null primary key,
+  uuid varchar(255) not null unique,
+  jdoc jsonb,
+  search tsvector
 );
 
-CREATE INDEX ON reader (uuid);
+create index on reader (uuid);
+create index on reader using gin(search);
 
 
 -- --------------------------------------------------------
@@ -57,20 +79,20 @@ CREATE INDEX ON reader (uuid);
 -- Table structure for table versions
 --
 
-CREATE TABLE IF NOT EXISTS versions (
-  label varchar(32) NOT NULL PRIMARY KEY,
-  value varchar(10) NOT NULL
+create table if not exists versions (
+  label varchar(32) not null primary key,
+  value varchar(10) not null
 );
 
-DELETE FROM versions WHERE label = 'schema';
-INSERT INTO versions VALUES('schema', '20160220');
+delete from versions where label = 'schema';
+insert into versions values('schema', '20160220');
 
 --
 -- Session handling table
 --
 
-CREATE TABLE IF NOT EXISTS session (
-    session_id varchar(255) NOT NULL PRIMARY KEY,
-    session_value text NOT NULL,
-    session_time integer NOT NULL
+create table if not exists session (
+    session_id varchar(255) not null primary key,
+    session_value text not null,
+    session_time integer not null
 );
